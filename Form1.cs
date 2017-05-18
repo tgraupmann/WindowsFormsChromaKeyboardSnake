@@ -8,7 +8,7 @@ namespace WindowsFormsChromaKeyboardSnake
 {
     public partial class Form1 : Form
     {
-        private static readonly float SNAKE_SPEED = 0.5f;
+        private const float SNAKE_SPEED = 0.3f;
         private const string ITEM_BLACK_WIDOW = "Razer BlackWidow Chroma";
         private const string ITEM_BLADE = "Blade Chroma";
 
@@ -23,6 +23,7 @@ namespace WindowsFormsChromaKeyboardSnake
         private class Vector2
         {
             public static readonly Vector2 Right = new Vector2(1, 0);
+            public static readonly Vector2 Up = new Vector2(0, 1);
             public static readonly Vector2 Zero = new Vector2();
             public float _mX = 0f;
             public float _mY = 0f;
@@ -58,6 +59,14 @@ namespace WindowsFormsChromaKeyboardSnake
             }
         }
 
+        private enum SnakeDirections
+        {
+            Down,
+            Left,
+            Right,
+            Up,
+        }
+
         /// <summary>
         /// Data to track the snake
         /// </summary>
@@ -66,6 +75,8 @@ namespace WindowsFormsChromaKeyboardSnake
             public Vector2 _mPosition = Vector2.Zero;
             public Vector2 _mDirection = Vector2.Right;
             public Color _mColor = Color.White;
+            public SnakeDirections _mSnakeDirection = SnakeDirections.Right;
+            public KeyData _mLastKey;
             public int GetColumn()
             {
                 return (int)_mPosition._mX;
@@ -83,11 +94,13 @@ namespace WindowsFormsChromaKeyboardSnake
         {
             public Key _mKey;
             public Color _mColor;
+            public bool _mSet;
             public static implicit operator KeyData(Key key)
             {
                 KeyData keyData = new KeyData();
                 keyData._mKey = key;
                 keyData._mColor = Color.Black;
+                keyData._mSet = false;
                 return keyData;
             }
         }
@@ -385,6 +398,14 @@ namespace WindowsFormsChromaKeyboardSnake
             InitializeComponent();
         }
 
+        private void InitSnake()
+        {
+            _sSnake._mColor = GetRandomColor();
+            _sSnake._mDirection = Vector2.Right;
+            _sSnake._mPosition = new Vector2(1, 0);
+            _sSnake._mSnakeDirection = SnakeDirections.Right;
+        }
+
         private void Form1_Load(object sender, EventArgs e)
         {
             _mComboBoxLayout.Items.Clear();
@@ -395,20 +416,24 @@ namespace WindowsFormsChromaKeyboardSnake
             _mKeyboardEvents = Hook.GlobalEvents();
             _mKeyboardEvents.KeyDown += HandleKeyDown;
 
+            InitBoard();
+
+            InitSnake();
+
+            _mTimerGame.Start();
+        }
+
+        private void InitBoard()
+        {
             for (int i = 0; i < _sKeys.GetLength(0); ++i)
             {
                 for (int j = 0; j < _sKeys.GetLength(1); ++j)
                 {
                     KeyData keyData = _sKeys[i, j];
+                    keyData._mSet = false;
                     SetColor(keyData._mKey, Color.Green);
                 }
             }
-
-            _sSnake._mColor = GetRandomColor();
-            _sSnake._mDirection = Vector2.Right + new Vector2(0, (float)_sRandom.NextDouble());
-            _sSnake._mPosition = new Vector2(1, _sSnake._mPosition._mY);
-
-            _mTimerGame.Start();
         }
 
         private void ButtonQuit_Click(object sender, EventArgs e)
@@ -431,18 +456,6 @@ namespace WindowsFormsChromaKeyboardSnake
             {
                 Keyboard.Instance.SetKey(key, color);
             }
-        }
-
-        private static void HandleKeyDown(object sender, KeyEventArgs e)
-        {
-            Key key;
-            string strKey = e.KeyCode.ToString();
-            if (!Enum.TryParse<Key>(strKey, true, out key))
-            {
-                return; //no-opsg
-            }
-
-            SetColor(key, Color.Green);
         }
 
         private Color GetRandomColor()
@@ -469,13 +482,13 @@ namespace WindowsFormsChromaKeyboardSnake
             _sSnake._mPosition = _sSnake._mPosition + _sSnake._mDirection * SNAKE_SPEED;
             if (_sSnake._mPosition._mY < 0f)
             {
-                _sSnake._mPosition._mY = 0f;
-                _sSnake._mDirection._mY = -_sSnake._mDirection._mY;
+                InitBoard();
+                InitSnake();
             }
             else if (_sSnake._mPosition._mY > 6f)
             {
-                _sSnake._mPosition._mY = 6f;
-                _sSnake._mDirection._mY = -_sSnake._mDirection._mY;
+                InitBoard();
+                InitSnake();
             }
 
             // Right edge
@@ -484,9 +497,8 @@ namespace WindowsFormsChromaKeyboardSnake
             }
             else
             {
-                _sSnake._mDirection = -Vector2.Right + new Vector2(0, (float)_sRandom.NextDouble());
-                _sSnake._mPosition = new Vector2(_sKeys.GetLength(1) - 1, _sSnake._mPosition._mY);
-                _sSnake._mColor = GetRandomColor();
+                InitBoard();
+                InitSnake();
             }
 
             // Left edge
@@ -495,9 +507,8 @@ namespace WindowsFormsChromaKeyboardSnake
             }
             else
             {
-                _sSnake._mDirection = Vector2.Right + new Vector2(0, (float)_sRandom.NextDouble());
-                _sSnake._mPosition = new Vector2(1, _sSnake._mPosition._mY);
-                _sSnake._mColor = GetRandomColor();
+                InitBoard();
+                InitSnake();
             }
 
             for (int i = 0; i < _sKeys.GetLength(0); ++i)
@@ -507,11 +518,111 @@ namespace WindowsFormsChromaKeyboardSnake
                     KeyData keyData = _sKeys[i, j];
                     if (i == _sSnake.GetRow() &&
                         j == _sSnake.GetColumn())
-                    { 
-                        keyData._mColor = _sSnake._mColor;
-                        SetColor(keyData._mKey, keyData._mColor);
+                    {
+                        if (!keyData._mSet)
+                        {
+                            keyData._mColor = _sSnake._mColor;
+                            keyData._mSet = true;
+                            SetColor(keyData._mKey, keyData._mColor);
+                            _sSnake._mLastKey = keyData;
+                        }
+                        else
+                        {
+                            if (_sSnake._mLastKey != keyData)
+                            {
+                                InitBoard();
+                                InitSnake();
+                            }
+                        }
+                        return;
                     }
                 }
+            }
+        }
+
+        private static void TryNewDirection(SnakeDirections newDirection)
+        {
+            switch (newDirection)
+            {
+                case SnakeDirections.Down:
+                    if (_sSnake._mSnakeDirection == SnakeDirections.Up)
+                    {
+                        return;
+                    }
+                    break;
+                case SnakeDirections.Left:
+                    if (_sSnake._mSnakeDirection == SnakeDirections.Right)
+                    {
+                        return;
+                    }
+                    break;
+                case SnakeDirections.Right:
+                    if (_sSnake._mSnakeDirection == SnakeDirections.Left)
+                    {
+                        return;
+                    }
+                    break;
+                case SnakeDirections.Up:
+                    if (_sSnake._mSnakeDirection == SnakeDirections.Down)
+                    {
+                        return;
+                    }
+                    break;
+            }
+
+            UpdateSnakeDirection(newDirection);
+        }
+
+        private static void UpdateSnakeDirection(SnakeDirections newDirection)
+        {
+            _sSnake._mSnakeDirection = newDirection;
+            switch (newDirection)
+            {
+                case SnakeDirections.Down:
+                    _sSnake._mDirection = -Vector2.Up;
+                    break;
+                case SnakeDirections.Left:
+                    _sSnake._mDirection = -Vector2.Right;
+                    break;
+                case SnakeDirections.Right:
+                    _sSnake._mDirection = Vector2.Right;
+                    break;
+                case SnakeDirections.Up:
+                    _sSnake._mDirection = Vector2.Up;
+                    break;
+            }
+        }
+
+        private static void HandleKeyDown(object sender, KeyEventArgs e)
+        {
+            Key key;
+            string strKey = e.KeyCode.ToString();
+            if (!Enum.TryParse<Key>(strKey, true, out key))
+            {
+                return; //no-opsg
+            }
+
+            if (key == Key.Invalid)
+            {
+                return;
+            }
+
+            SetColor(key, Color.Green);
+
+            switch (key)
+            {
+                case Key.Down:
+                    TryNewDirection(SnakeDirections.Up);
+                    return;
+                case Key.Left:
+                    TryNewDirection(SnakeDirections.Left);
+                    return;
+                case Key.Right:
+                    TryNewDirection(SnakeDirections.Right);
+                    return;
+                case Key.Up:
+                    TryNewDirection(SnakeDirections.Down);
+                    return;
             }
         }
 
